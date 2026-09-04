@@ -10,6 +10,11 @@ Point this tool at any AI endpoint, chatbot, or agent API to execute a comprehen
 
 - [Key Features](#key-features)
 - [Architecture & Tech Stack](#architecture--tech-stack)
+- [Environment Configuration (.env) - Detailed Guide](#environment-configuration-env---detailed-guide)
+  - [1. Setting up your `.env` file](#1-setting-up-your-env-file)
+  - [2. Exhaustive Variable Reference](#2-exhaustive-variable-reference)
+  - [3. LLM Provider Options (Groq, OpenAI, Offline)](#3-llm-provider-options-groq-openai-offline)
+  - [4. Why `.env` is Git-Ignored](#4-why-env-is-git-ignored)
 - [Quick Start Guide (Local Setup)](#quick-start-guide-local-setup)
   - [Prerequisites](#prerequisites)
   - [1. Backend Setup](#1-backend-setup)
@@ -20,9 +25,7 @@ Point this tool at any AI endpoint, chatbot, or agent API to execute a comprehen
   - [B. Automated Battery Scans](#b-automated-battery-scans)
   - [C. Adding Custom AI Targets](#c-adding-custom-ai-targets)
 - [Multi-Layer Evaluator Engine](#multi-layer-evaluator-engine)
-- [Adversarial Attack Library](#adversarial-attack-library)
 - [The Heavy System Prompt & Canary Tokens](#the-heavy-system-prompt--canary-tokens)
-- [Environment Configuration (.env)](#environment-configuration-env)
 - [Running Automated Tests](#running-automated-tests)
 - [Docker Deployment](#docker-deployment)
 - [Security & SSRF Protections](#security--ssrf-protections)
@@ -70,6 +73,95 @@ prompt-injestor/
 
 ---
 
+## Environment Configuration (.env) - Detailed Guide
+
+The project relies on a root `.env` file to manage database connections, API keys, scanner concurrency, model providers, and security thresholds.
+
+### 1. Setting up your `.env` file
+
+In the root of the repository, copy the provided `.env.example` template:
+
+```powershell
+# On Windows (PowerShell):
+Copy-Item .env.example .env
+
+# On Linux / macOS / Git Bash:
+cp .env.example .env
+```
+
+### 2. Exhaustive Variable Reference
+
+| Variable Category | Variable Name | Default Value | Description |
+| :--- | :--- | :--- | :--- |
+| **Application** | `APP_NAME` | `Prompt-Injection Tester` | Name of the application displayed in logs and headers. |
+| | `ENVIRONMENT` | `development` | Environment mode (`development`, `staging`, `production`). |
+| | `DEBUG` | `true` | Enables verbose stack traces and FastAPI debug outputs. |
+| | `SECRET_KEY` | `change-me-to-a-long-random-string` | Secret key used for signing session tokens and hashing. |
+| | `LOG_LEVEL` | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
+| | `LOG_FORMAT` | `json` | Log format (`json` for production, `console` for dev). |
+| **Database** | `DATABASE_URL` | `sqlite:///./prompt_inject.db` | SQLAlchemy connection string. Defaults to zero-setup SQLite file in `backend/`. For PostgreSQL, set `postgresql+psycopg2://user:pass@localhost:5432/prompt_inject`. |
+| **API & CORS** | `API_HOST` | `0.0.0.0` | Host IP for FastAPI backend binding. |
+| | `API_PORT` | `8000` | Port for FastAPI backend. |
+| | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:3000` | Comma-separated list of allowed frontend origins. |
+| **LLM Provider** | `LLM_PROVIDER` | `groq` | Provider for LLM Judge & dynamic attack generator (`groq`, `openai`, `mock`, `none`). |
+| | `LLM_API_KEY` | `gsk_...` | API key for the chosen LLM provider. |
+| | `LLM_BASE_URL` | `https://api.groq.com/openai/v1` | Base URL for LLM inference requests. |
+| | `JUDGE_MODEL` | `openai/gpt-oss-120b` | Model used by Layer 2 to evaluate target responses. |
+| | `ATTACK_MODEL` | `openai/gpt-oss-120b` | Model used by the attack generator for synthetic payloads. |
+| **Embeddings** | `EMBEDDING_PROVIDER` | `none` | Provider for Layer 1 semantic similarity (`none`, `sentence-transformers`, `openai`). |
+| | `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Embedding model identifier if embedding provider is enabled. |
+| **Scan Execution** | `MAX_CONCURRENCY` | `5` | Maximum concurrent async HTTP attack requests fired at target. |
+| | `REQUEST_TIMEOUT` | `30` | Timeout in seconds for individual target HTTP calls. |
+| | `MAX_ATTACKS` | `200` | Upper limit safety cap on attacks per scan. |
+| | `DEFAULT_RATE_LIMIT` | `10` | Maximum requests per second per target. |
+| | `ATTACK_GEN_TIMEOUT`| `60` | Timeout in seconds for dynamic LLM attack generation. |
+| | `MAX_GENERATED_ATTACKS`| `25` | Maximum number of LLM-synthesized attacks per category. |
+| | `MAX_RESPONSE_LENGTH`| `200000` | Max character length of target response to ingest into evaluator. |
+| **SSRF Safeguards** | `SSRF_BLOCK_PRIVATE` | `true` | Prevents scanning private IPs (10.x, 192.168.x) and cloud metadata (169.254.169.254). |
+| | `SSRF_ALLOW_LOCALHOST_DEV`| `true` | Permits `localhost` and `127.0.0.1` targets specifically for local testing. |
+| **Admin & UI** | `API_AUTH_ENABLED` | `false` | When `true`, enforces HTTP Basic Auth on all API endpoints. |
+| | `FRONTEND_PORT` | `5173` | Default port where Vite serves the frontend React dashboard. |
+
+### 3. LLM Provider Options (Groq, OpenAI, Offline)
+
+#### Option A: Groq (Recommended & Pre-configured)
+Ultra-fast inference using high-parameter reasoning models:
+```env
+LLM_PROVIDER=groq
+LLM_API_KEY=gsk_your_groq_api_key_here
+LLM_BASE_URL=https://api.groq.com/openai/v1
+JUDGE_MODEL=openai/gpt-oss-120b
+ATTACK_MODEL=openai/gpt-oss-120b
+```
+
+#### Option B: OpenAI
+Using OpenAI's GPT models:
+```env
+LLM_PROVIDER=openai
+LLM_API_KEY=sk-your_openai_api_key_here
+LLM_BASE_URL=https://api.openai.com/v1
+JUDGE_MODEL=gpt-4o-mini
+ATTACK_MODEL=gpt-4o-mini
+```
+
+#### Option C: Offline / No API Key Mode
+If you do not have an active API key or want to run offline:
+```env
+LLM_PROVIDER=none
+LLM_API_KEY=
+LLM_BASE_URL=
+```
+*Note: In offline mode, the platform automatically falls back to its deterministic rule engine (regex matching, canary token detection, PII extraction) and library of 30+ pre-compiled attack templates with zero external dependencies.*
+
+### 4. Why `.env` is Git-Ignored
+
+The `.env` file is explicitly listed in `.gitignore`:
+- It prevents accidental disclosure of real API keys and database credentials to public GitHub repositories.
+- GitHub enforces **Push Protection** that automatically blocks any push containing live Groq or OpenAI keys.
+- Each developer or deployment machine maintains its own local `.env` file created from `.env.example`.
+
+---
+
 ## Quick Start Guide (Local Setup)
 
 To run the entire suite locally, open **three terminal windows** (one for each service).
@@ -89,7 +181,7 @@ In **Terminal 1**:
 # Navigate to the backend directory
 cd backend
 
-# Create and activate virtual environment
+# Create and activate Python virtual environment
 python -m venv .venv
 # On Windows:
 .venv\Scripts\activate
@@ -216,43 +308,6 @@ Run the complete 100-test adversarial validation suite:
 ```bash
 cd backend
 pytest tests/ -v
-```
-
----
-
-## Environment Configuration (.env)
-
-The application reads configuration from `.env` in the project root:
-
-```env
-# Application
-APP_NAME=Prompt-Injection Tester
-ENVIRONMENT=development
-DEBUG=true
-
-# Database
-DATABASE_URL=sqlite:///./prompt_inject.db
-
-# API
-API_HOST=0.0.0.0
-API_PORT=8000
-CORS_ORIGINS=http://localhost:5173,http://localhost:3000
-
-# LLM Judge & Attack Generator (Groq)
-LLM_PROVIDER=groq
-LLM_API_KEY=gsk_your_groq_api_key_here
-LLM_BASE_URL=https://api.groq.com/openai/v1
-JUDGE_MODEL=openai/gpt-oss-120b
-ATTACK_MODEL=openai/gpt-oss-120b
-
-# Scan Limits
-MAX_CONCURRENCY=5
-REQUEST_TIMEOUT=30
-MAX_ATTACKS=200
-
-# SSRF Safeguards
-SSRF_BLOCK_PRIVATE=true
-SSRF_ALLOW_LOCALHOST_DEV=true
 ```
 
 ---
