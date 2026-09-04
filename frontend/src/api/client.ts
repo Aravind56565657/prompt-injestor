@@ -96,7 +96,13 @@ export const api = {
   // Interactive Target Chat Playground
   chatTarget: (
     targetId: number,
-    payload: { message: string; evaluate?: boolean; profile?: string }
+    payload: {
+      message: string;
+      evaluate?: boolean;
+      profile?: string;
+      category?: string;
+      objective?: string;
+    }
   ) =>
     request<{
       target_response: string | null;
